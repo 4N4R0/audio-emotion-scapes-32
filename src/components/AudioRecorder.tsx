@@ -1,6 +1,5 @@
-
 import React, { useState, useRef, useEffect } from 'react';
-import { Mic, Square, Play, Pause } from 'lucide-react';
+import { Mic, Square, Play, Pause, Save, Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import AudioVisualizer from './AudioVisualizer';
@@ -19,6 +18,7 @@ const AudioRecorder = ({ onRecordingComplete, minRecordingTime = 30 }: AudioReco
   const [recordingBlob, setRecordingBlob] = useState<Blob | null>(null);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [audioData, setAudioData] = useState<number[]>([]);
+  const [isPlaying, setIsPlaying] = useState(false);
 
   // Refs for managing media recorder and timers
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -27,6 +27,7 @@ const AudioRecorder = ({ onRecordingComplete, minRecordingTime = 30 }: AudioReco
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   // Effect to clean up resources on unmount
   useEffect(() => {
@@ -42,6 +43,31 @@ const AudioRecorder = ({ onRecordingComplete, minRecordingTime = 30 }: AudioReco
       }
       if (audioContextRef.current) {
         audioContextRef.current.close();
+      }
+    };
+  }, [audioUrl]);
+
+  // Create audio element reference for playback control
+  useEffect(() => {
+    if (audioUrl) {
+      if (!audioRef.current) {
+        audioRef.current = new Audio(audioUrl);
+        
+        // Add event listeners to update play state
+        audioRef.current.addEventListener('ended', () => setIsPlaying(false));
+        audioRef.current.addEventListener('pause', () => setIsPlaying(false));
+        audioRef.current.addEventListener('play', () => setIsPlaying(true));
+      } else {
+        audioRef.current.src = audioUrl;
+      }
+    }
+    
+    return () => {
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current.removeEventListener('ended', () => setIsPlaying(false));
+        audioRef.current.removeEventListener('pause', () => setIsPlaying(false));
+        audioRef.current.removeEventListener('play', () => setIsPlaying(true));
       }
     };
   }, [audioUrl]);
@@ -198,6 +224,31 @@ const AudioRecorder = ({ onRecordingComplete, minRecordingTime = 30 }: AudioReco
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
+  // Audio playback controls
+  const togglePlayback = () => {
+    if (!audioRef.current || !audioUrl) return;
+    
+    if (isPlaying) {
+      audioRef.current.pause();
+    } else {
+      audioRef.current.play();
+    }
+  };
+
+  // Download recording
+  const downloadRecording = () => {
+    if (!audioUrl || !recordingBlob) return;
+    
+    const a = document.createElement('a');
+    a.href = audioUrl;
+    a.download = `recording-${new Date().toISOString()}.wav`;
+    a.click();
+    
+    toast.success("Recording downloaded", {
+      description: "Your audio file has been saved to your device."
+    });
+  };
+
   // Handle completion when a recording exists
   const handleComplete = () => {
     if (recordingBlob) {
@@ -213,9 +264,18 @@ const AudioRecorder = ({ onRecordingComplete, minRecordingTime = 30 }: AudioReco
           {isRecording ? (
             <AudioVisualizer audioData={audioData} isRecording={isRecording} isPaused={isPaused} />
           ) : (
-            <div className="text-center">
+            <div className="text-center w-full">
               {audioUrl ? (
-                <audio controls className="w-full" src={audioUrl}></audio>
+                <div className="w-full">
+                  <audio 
+                    controls 
+                    className="w-full" 
+                    src={audioUrl}
+                    onPlay={() => setIsPlaying(true)}
+                    onPause={() => setIsPlaying(false)}
+                    onEnded={() => setIsPlaying(false)}
+                  />
+                </div>
               ) : (
                 <p className="text-muted-foreground">Ready to record your audio...</p>
               )}
@@ -245,14 +305,26 @@ const AudioRecorder = ({ onRecordingComplete, minRecordingTime = 30 }: AudioReco
               </Button>
               
               {recordingBlob && (
-                <Button 
-                  variant="secondary" 
-                  size="lg"
-                  onClick={handleComplete}
-                  className="gap-2"
-                >
-                  Use Recording
-                </Button>
+                <>
+                  <Button 
+                    variant="secondary" 
+                    size="lg"
+                    onClick={handleComplete}
+                    className="gap-2"
+                  >
+                    <Save className="h-5 w-5" />
+                    Use Recording
+                  </Button>
+                  <Button 
+                    variant="outline" 
+                    size="lg"
+                    onClick={downloadRecording}
+                    className="gap-2"
+                  >
+                    <Download className="h-5 w-5" />
+                    Download
+                  </Button>
+                </>
               )}
             </>
           ) : (

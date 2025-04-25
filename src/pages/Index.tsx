@@ -36,6 +36,20 @@ const Index = () => {
     });
   };
 
+  // Function to format file size
+  const formatFileSize = (size: number) => {
+    if (size < 1024) return `${size} B`;
+    if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
+    return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+  };
+
+  // Get recording metadata
+  const recordingInfo = recordingBlob ? {
+    size: formatFileSize(recordingBlob.size),
+    type: recordingBlob.type,
+    lastModified: new Date().toLocaleString()
+  } : null;
+
   return (
     <div className="min-h-screen flex flex-col">
       {/* Header with dynamic mood gradient */}
@@ -79,6 +93,13 @@ const Index = () => {
             </div>
             
             <AudioRecorder onRecordingComplete={handleRecordingComplete} minRecordingTime={30} />
+            
+            {recordingInfo && (
+              <div className="text-sm text-muted-foreground">
+                <p>Recording saved: {recordingInfo.type} ({recordingInfo.size})</p>
+                <p>Created: {recordingInfo.lastModified}</p>
+              </div>
+            )}
           </TabsContent>
           
           <TabsContent value="mood" className="space-y-8">
@@ -111,6 +132,10 @@ const Index = () => {
               <h2 className="text-2xl font-bold">Generate Your Music</h2>
               <p>
                 Transform your audio into a unique music track based on your selected {selectedMood} mood.
+              </p>
+              <p className="text-sm text-muted-foreground">
+                This demonstration uses simulated AI functionality. In a production app, it would 
+                use Magenta.js for music generation and pyAudioAnalysis for audio feature extraction.
               </p>
             </div>
             

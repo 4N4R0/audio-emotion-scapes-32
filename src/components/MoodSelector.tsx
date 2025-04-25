@@ -1,9 +1,8 @@
-
 import React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
-import { Happy, Music, Frown, Angry, Smile } from 'lucide-react';
+import { Smile, Music, Frown, Angry, Zap } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 export type Mood = 'happy' | 'calm' | 'energetic' | 'sad' | 'angry';
@@ -28,7 +27,7 @@ const MoodSelector = ({ selectedMood, onMoodSelect, aiSuggestedMood }: MoodSelec
     {
       value: 'happy',
       label: 'Happy',
-      icon: Happy,
+      icon: Smile,
       description: 'Cheerful, upbeat vibes',
       className: 'border-yellow-400/30 bg-yellow-500/10 hover:bg-yellow-500/20',
     },
@@ -42,7 +41,7 @@ const MoodSelector = ({ selectedMood, onMoodSelect, aiSuggestedMood }: MoodSelec
     {
       value: 'energetic',
       label: 'Energetic',
-      icon: Smile,
+      icon: Zap,
       description: 'Dynamic, motivating beats',
       className: 'border-orange-400/30 bg-orange-500/10 hover:bg-orange-500/20',
     },

@@ -133,10 +133,18 @@ const Index = () => {
               <p>
                 Transform your audio into a unique music track based on your selected {selectedMood} mood.
               </p>
-              <p className="text-sm text-muted-foreground">
-                This demonstration uses simulated AI functionality. In a production app, it would 
-                use Magenta.js for music generation and pyAudioAnalysis for audio feature extraction.
-              </p>
+              <div className="text-sm bg-yellow-100 dark:bg-yellow-900/30 p-4 rounded-md mt-4">
+                <h3 className="font-medium text-amber-800 dark:text-amber-300">About This Demo</h3>
+                <p className="text-amber-700 dark:text-amber-400">
+                  This application demonstrates how a Speech Emotion Recognition (SER) toolkit combined with 
+                  Magenta.js would work. The current implementation simulates these tools with the Web Audio API
+                  to modify your recording based on the selected mood.
+                </p>
+                <p className="text-amber-700 dark:text-amber-400 mt-2">
+                  In a production version, we would use Magenta.js for sophisticated music generation
+                  and pyAudioAnalysis for advanced audio feature extraction and emotion detection.
+                </p>
+              </div>
             </div>
             
             <MusicGenerator 

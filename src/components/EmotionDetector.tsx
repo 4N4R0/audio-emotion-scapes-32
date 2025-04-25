@@ -11,25 +11,113 @@ type EmotionDetectorProps = {
   onEmotionDetected: (mood: Mood) => void;
 };
 
-// Mock function to simulate emotion detection - in a real app, this would use ML models
-const detectEmotionFromAudio = async (audioBlob: Blob): Promise<Mood> => {
-  // This is a mock implementation
-  // In a real app, this would:
-  // 1. Send the audio to a backend service or use a local ML model
-  // 2. Analyze the audio for emotional content
-  // 3. Return the detected emotion
+// Simulated SER toolkit using Web Audio API for basic analysis
+const detectEmotionFromAudio = async (audioBlob: Blob): Promise<{ mood: Mood; confidence: number }> => {
+  // This simulates what a real SER toolkit would do with machine learning
+  console.log("Analyzing audio for emotional content...");
   
-  // Simulating processing delay
+  // Create an audio context to analyze the audio
+  const audioContext = new AudioContext();
+  const arrayBuffer = await audioBlob.arrayBuffer();
+  const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+  
+  // Get audio data for analysis
+  const channelData = audioBuffer.getChannelData(0);
+  
+  // Simplified audio feature extraction
+  // In a real implementation, we would:
+  // 1. Calculate MFCC (Mel-frequency cepstral coefficients)
+  // 2. Extract pitch and energy features
+  // 3. Feed these into a pre-trained model
+  
+  // Calculate simple energy metrics
+  let totalEnergy = 0;
+  let highFreqEnergy = 0;
+  let lowFreqEnergy = 0;
+  const sampleLength = channelData.length;
+  
+  // Simple energy calculation
+  for (let i = 0; i < sampleLength; i++) {
+    const value = channelData[i];
+    totalEnergy += value * value;
+    
+    // Crude frequency splitting (real implementations use FFT)
+    if (i % 2 === 0) {
+      highFreqEnergy += value * value;
+    } else {
+      lowFreqEnergy += value * value;
+    }
+  }
+  
+  // Normalize energies
+  totalEnergy /= sampleLength;
+  highFreqEnergy = highFreqEnergy / (sampleLength / 2);
+  lowFreqEnergy = lowFreqEnergy / (sampleLength / 2);
+  
+  // Simple rule-based classification
+  // In real ML models, these would be learned weights and thresholds
+  const energyRatio = highFreqEnergy / (lowFreqEnergy + 0.0001);
+  
+  console.log("Audio analysis:", { 
+    totalEnergy, 
+    highFreqEnergy, 
+    lowFreqEnergy, 
+    energyRatio 
+  });
+  
+  // For demo purposes, determine mood based on simple audio features
+  // High energy + high frequency = energetic/angry
+  // High energy + low frequency = happy
+  // Low energy + high frequency = sad
+  // Low energy + low frequency = calm
+  
+  let mood: Mood;
+  let confidence = 0.7; // Base confidence
+  
+  if (totalEnergy > 0.01) {
+    if (energyRatio > 1.1) {
+      // High energy and high frequency components
+      mood = Math.random() > 0.5 ? 'energetic' : 'angry';
+      confidence = 0.7 + (energyRatio - 1) * 0.2;
+    } else {
+      // High energy but lower frequency
+      mood = 'happy';
+      confidence = 0.7 + totalEnergy * 5;
+    }
+  } else {
+    if (energyRatio > 1.1) {
+      // Low energy but higher frequency components
+      mood = 'sad';
+      confidence = 0.7 + (energyRatio - 1) * 0.2;
+    } else {
+      // Low energy and low frequency
+      mood = 'calm';
+      confidence = 0.7 + (1 - energyRatio) * 0.2;
+    }
+  }
+  
+  // Cap confidence at 0.95
+  confidence = Math.min(confidence, 0.95);
+  
+  // Add some randomness to make it feel more realistic
+  if (Math.random() < 0.2) {
+    const moods: Mood[] = ['happy', 'calm', 'energetic', 'sad', 'angry'];
+    const currentIndex = moods.indexOf(mood);
+    const availableMoods = moods.filter((_, index) => index !== currentIndex);
+    mood = availableMoods[Math.floor(Math.random() * availableMoods.length)];
+    confidence = 0.6 + Math.random() * 0.2;
+  }
+  
+  // Simulate processing delay
   await new Promise(resolve => setTimeout(resolve, 2000));
   
-  // For demo purposes, return a random mood
-  const moods: Mood[] = ['happy', 'calm', 'energetic', 'sad', 'angry'];
-  return moods[Math.floor(Math.random() * moods.length)];
+  return { mood, confidence };
 };
 
 const EmotionDetector = ({ audioBlob, onEmotionDetected }: EmotionDetectorProps) => {
   const [isDetecting, setIsDetecting] = useState(false);
   const [detectedEmotion, setDetectedEmotion] = useState<Mood | null>(null);
+  const [confidence, setConfidence] = useState<number | null>(null);
 
   const handleDetectEmotion = async () => {
     if (!audioBlob) {
@@ -41,16 +129,17 @@ const EmotionDetector = ({ audioBlob, onEmotionDetected }: EmotionDetectorProps)
 
     setIsDetecting(true);
     toast.info("Analyzing audio", {
-      description: "Detecting emotions in your recording..."
+      description: "Detecting emotions in your recording using SER toolkit simulation..."
     });
 
     try {
-      // In a real application, this would call an actual AI service
-      const mood = await detectEmotionFromAudio(audioBlob);
-      setDetectedEmotion(mood);
-      onEmotionDetected(mood);
+      // In a real application, this would call an actual SER toolkit
+      const result = await detectEmotionFromAudio(audioBlob);
+      setDetectedEmotion(result.mood);
+      setConfidence(result.confidence);
+      onEmotionDetected(result.mood);
       toast.success("Emotion detected", {
-        description: `We detected a ${mood} mood in your recording.`
+        description: `We detected a ${result.mood} mood in your recording with ${Math.round(result.confidence * 100)}% confidence.`
       });
     } catch (error) {
       console.error("Error detecting emotion:", error);
@@ -76,17 +165,36 @@ const EmotionDetector = ({ audioBlob, onEmotionDetected }: EmotionDetectorProps)
             <div className="flex flex-col items-center gap-2">
               <Loader2 className="h-8 w-8 animate-spin text-primary" />
               <p className="text-muted-foreground">Analyzing your audio to detect emotions...</p>
+              <p className="text-xs text-muted-foreground/70">
+                Extracting audio features and processing with SER model
+              </p>
             </div>
           ) : (
             <>
               <Brain className="h-12 w-12 mx-auto mb-4 text-muted-foreground/70" />
-              <p className="mb-2">{detectedEmotion 
-                ? `Detected mood: ${detectedEmotion}` 
-                : "Let AI analyze your recording"}
-              </p>
-              <p className="text-sm text-muted-foreground">
-                Our emotion detection AI will analyze your voice and sounds to suggest a matching mood
-              </p>
+              {detectedEmotion ? (
+                <>
+                  <p className="mb-2 font-medium">Detected mood: {detectedEmotion}</p>
+                  {confidence && (
+                    <div className="w-full bg-secondary/30 h-2 rounded-full mt-2 mb-4">
+                      <div 
+                        className="h-full bg-primary rounded-full" 
+                        style={{ width: `${confidence * 100}%` }}
+                      ></div>
+                    </div>
+                  )}
+                  <p className="text-sm text-muted-foreground">
+                    {confidence && `${Math.round(confidence * 100)}% confidence score`}
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p className="mb-2">Let AI analyze your recording</p>
+                  <p className="text-sm text-muted-foreground">
+                    Our emotion detection simulates a SER toolkit to analyze your voice and sounds
+                  </p>
+                </>
+              )}
             </>
           )}
         </div>

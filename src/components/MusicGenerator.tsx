@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
@@ -84,23 +83,73 @@ const generateMusicFromAudio = async (audioBlob: Blob, mood: Mood): Promise<Blob
         break;
         
       case 'calm':
-        // Slow down tempo, add reverb-like effect, and soften sound for calm mood
+        // Enhanced calm mood processing with proper reverb, softening, and smoother transitions
+        
+        // Apply more sophisticated reverb and smoothing for calm mood
+        const reverbTime = 0.7; // reverb time in seconds
+        const decay = Math.exp(-3.0 / (sampleRate * reverbTime));
+        let reverbBuffer = new Float32Array(Math.ceil(reverbTime * sampleRate));
+        
+        // Create a smooth fade-in at the beginning
+        const fadeInSamples = Math.floor(sampleRate * 0.5); // 0.5 second fade in
+        
+        // Low-pass filter parameters for smooth, warmer sound
+        const filterStrength = 0.85;
+        
+        // Previous samples for smoother transitions
+        let prev1 = 0, prev2 = 0, prev3 = 0;
+        
         for (let i = 0; i < outputData.length; i++) {
           // Slow down by stretching (using a slower index)
-          const newIndex = Math.floor(i * 0.75) % inputData.length;
+          const newIndex = Math.floor(i * 0.8) % inputData.length;
           
-          // Add a reverb-like effect by mixing with delayed samples
-          let sum = inputData[newIndex] * 0.6; // Main sound but softer
+          // Get base sample with gentle amplitude reduction
+          let sample = inputData[newIndex] * 0.5;
           
-          // Add multiple echos with decreasing volume
-          if (i > sampleRate * 0.2) sum += inputData[Math.max(0, i - Math.floor(sampleRate * 0.2))] * 0.2;
-          if (i > sampleRate * 0.4) sum += inputData[Math.max(0, i - Math.floor(sampleRate * 0.4))] * 0.12;
-          if (i > sampleRate * 0.6) sum += inputData[Math.max(0, i - Math.floor(sampleRate * 0.6))] * 0.08;
+          // Apply fade-in at the beginning
+          if (i < fadeInSamples) {
+            sample *= (i / fadeInSamples);
+          }
           
-          // Smooth transitions between samples (low-pass filter effect)
-          const prev1 = i > 0 ? outputData[i-1] : 0;
-          const prev2 = i > 1 ? outputData[i-2] : 0;
-          outputData[i] = sum * 0.6 + prev1 * 0.25 + prev2 * 0.15;
+          // Apply low-pass filter for warmer sound (reduce harsh frequencies)
+          sample = (sample * (1 - filterStrength)) + (prev1 * filterStrength * 0.7) + 
+                   (prev2 * filterStrength * 0.2) + (prev3 * filterStrength * 0.1);
+          prev3 = prev2;
+          prev2 = prev1;
+          prev1 = sample;
+          
+          // Create reverb effect
+          if (i % 500 === 0) { // Update reverb buffer occasionally to create gentle movement
+            for (let j = 0; j < reverbBuffer.length; j++) {
+              reverbBuffer[j] = 0;
+            }
+          }
+          
+          // Apply the reverb
+          let reverbSample = 0;
+          if (i > 0) {
+            // Update the reverb buffer
+            for (let j = 0; j < reverbBuffer.length - 1; j++) {
+              reverbBuffer[j] = reverbBuffer[j + 1] * decay;
+              reverbSample += reverbBuffer[j];
+            }
+            reverbBuffer[reverbBuffer.length - 1] = sample;
+            reverbSample += sample;
+            
+            // Normalize reverb to avoid clipping
+            reverbSample *= 0.2;
+          }
+          
+          // Combine direct sound with reverb
+          outputData[i] = sample * 0.6 + reverbSample * 0.4;
+          
+          // Add a very subtle modulation to avoid "dead" sound
+          if (i % 8000 < 4000) { // Very slow gentle wave
+            outputData[i] *= 1.0 + (0.05 * Math.sin(i / 8000 * Math.PI));
+          }
+          
+          // Ensure we don't clip
+          outputData[i] = Math.max(-0.9, Math.min(0.9, outputData[i]));
         }
         break;
         
@@ -231,7 +280,6 @@ const MusicGenerator = ({ audioBlob, selectedMood }: MusicGeneratorProps) => {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const audioElementRef = useRef<HTMLAudioElement | null>(null);
 
-  // Set up original audio URL
   useEffect(() => {
     if (audioBlob) {
       const url = URL.createObjectURL(audioBlob);
@@ -243,9 +291,7 @@ const MusicGenerator = ({ audioBlob, selectedMood }: MusicGeneratorProps) => {
     }
   }, [audioBlob]);
   
-  // Handle audio element playback
   useEffect(() => {
-    // Clean up previous audio element
     if (audioRef.current) {
       audioRef.current.pause();
       audioRef.current.removeEventListener('ended', () => setIsPlaying(false));
@@ -253,11 +299,9 @@ const MusicGenerator = ({ audioBlob, selectedMood }: MusicGeneratorProps) => {
       audioRef.current.removeEventListener('play', () => setIsPlaying(true));
     }
     
-    // Set up new audio element if we have a URL
     if (generatedMusicUrl) {
       const audio = new Audio(generatedMusicUrl);
       
-      // Add event listeners
       const handleEnded = () => setIsPlaying(false);
       const handlePause = () => setIsPlaying(false);
       const handlePlay = () => setIsPlaying(true);
@@ -266,11 +310,9 @@ const MusicGenerator = ({ audioBlob, selectedMood }: MusicGeneratorProps) => {
       audio.addEventListener('pause', handlePause);
       audio.addEventListener('play', handlePlay);
       
-      // Store audio element
       audioRef.current = audio;
       
       return () => {
-        // Clean up on unmount or when URL changes
         if (audioRef.current) {
           audioRef.current.pause();
           audioRef.current.removeEventListener('ended', handleEnded);
@@ -281,11 +323,9 @@ const MusicGenerator = ({ audioBlob, selectedMood }: MusicGeneratorProps) => {
     }
   }, [generatedMusicUrl]);
   
-  // Connect the audio element ref to the DOM
   useEffect(() => {
     if (audioElementRef.current) {
       const element = audioElementRef.current;
-      // Event listeners for the visible audio element
       const handleVisiblePlay = () => setIsPlaying(true);
       const handleVisiblePause = () => setIsPlaying(false);
       const handleVisibleEnded = () => setIsPlaying(false);
@@ -353,7 +393,6 @@ const MusicGenerator = ({ audioBlob, selectedMood }: MusicGeneratorProps) => {
       return;
     }
 
-    // Clean up previous audio URL if it exists
     if (generatedMusicUrl) {
       URL.revokeObjectURL(generatedMusicUrl);
       setGeneratedMusicUrl(null);
@@ -418,13 +457,11 @@ const MusicGenerator = ({ audioBlob, selectedMood }: MusicGeneratorProps) => {
       setIsPlaying(false);
     } else {
       try {
-        // Ensure src is set and reset if needed
         if (!audioRef.current.src || audioRef.current.src !== generatedMusicUrl) {
           audioRef.current.src = generatedMusicUrl;
           audioRef.current.load();
         }
         
-        // Play audio and handle errors
         const playPromise = audioRef.current.play();
         
         if (playPromise !== undefined) {
@@ -459,7 +496,6 @@ const MusicGenerator = ({ audioBlob, selectedMood }: MusicGeneratorProps) => {
     setIsSharing(true);
     
     try {
-      // Try Web Share API first
       if (navigator.share && navigator.canShare) {
         try {
           const file = new File([generatedBlob], `${selectedMood}-music-creation.wav`, { 
@@ -471,28 +507,24 @@ const MusicGenerator = ({ audioBlob, selectedMood }: MusicGeneratorProps) => {
             text: `Check out the music I created with Audio Emotion Scapes!`
           };
           
-          // Check if file sharing is supported
           if (navigator.canShare({ files: [file] })) {
             await navigator.share({
               ...shareData,
               files: [file]
             });
           } else {
-            // Fall back to sharing without file
             await navigator.share(shareData);
           }
           
           toast.success("Shared successfully");
         } catch (err) {
           console.error("Web Share API error:", err);
-          // Fall back to clipboard
           await navigator.clipboard.writeText("Your music has been generated! (This is a demo link)");
           toast.info("Sharing link copied", {
             description: "The link to your music has been copied to clipboard."
           });
         }
       } else {
-        // Fall back to clipboard if Web Share API is not supported
         await navigator.clipboard.writeText("Your music has been generated! (This is a demo link)");
         toast.info("Sharing link copied", {
           description: "The link to your music has been copied to clipboard."
@@ -540,20 +572,16 @@ const MusicGenerator = ({ audioBlob, selectedMood }: MusicGeneratorProps) => {
   };
 
   const playSongFromPlaylist = (song: GeneratedSong) => {
-    // Clean up previous audio
     if (audioRef.current) {
       audioRef.current.pause();
     }
     
-    // Clean up previous URLs
     if (generatedMusicUrl) {
       URL.revokeObjectURL(generatedMusicUrl);
     }
     
-    // Create new audio element
     const audio = new Audio(song.url);
     
-    // Set up event listeners
     const handleEnded = () => setIsPlaying(false);
     const handlePause = () => setIsPlaying(false);
     const handlePlay = () => setIsPlaying(true);
@@ -574,7 +602,6 @@ const MusicGenerator = ({ audioBlob, selectedMood }: MusicGeneratorProps) => {
             setGeneratedMusicUrl(song.url);
             setGeneratedBlob(song.blob);
             
-            // Update UI audio element if it exists
             if (audioElementRef.current && audioElementRef.current.src !== song.url) {
               audioElementRef.current.src = song.url;
               audioElementRef.current.load();

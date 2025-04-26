@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
@@ -235,7 +234,6 @@ const MusicGenerator = ({ audioBlob, selectedMood }: MusicGeneratorProps) => {
       const url = URL.createObjectURL(audioBlob);
       setOriginalAudioUrl(url);
       
-      // Clean up when component unmounts
       return () => {
         URL.revokeObjectURL(url);
       };
@@ -244,7 +242,14 @@ const MusicGenerator = ({ audioBlob, selectedMood }: MusicGeneratorProps) => {
   
   // Create audio element for playback control
   useEffect(() => {
-    if (generatedMusicUrl && !audioRef.current) {
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.removeEventListener('ended', () => setIsPlaying(false));
+      audioRef.current.removeEventListener('pause', () => setIsPlaying(false));
+      audioRef.current.removeEventListener('play', () => setIsPlaying(true));
+    }
+    
+    if (generatedMusicUrl) {
       const audio = new Audio(generatedMusicUrl);
       audio.addEventListener('ended', () => setIsPlaying(false));
       audio.addEventListener('pause', () => setIsPlaying(false));
@@ -353,7 +358,15 @@ const MusicGenerator = ({ audioBlob, selectedMood }: MusicGeneratorProps) => {
       // Save the song and update state
       await saveSongOption(song);
       setGeneratedBlob(song.blob);
-      setGeneratedMusicUrl(song.url);
+      
+      // Clean up previous URL if it exists
+      if (generatedMusicUrl) {
+        URL.revokeObjectURL(generatedMusicUrl);
+      }
+      
+      // Create a new URL for the generated blob
+      const url = URL.createObjectURL(song.blob);
+      setGeneratedMusicUrl(url);
       
       toast.success("Music generated", {
         description: "Your custom track is ready to play and share!"
@@ -378,12 +391,22 @@ const MusicGenerator = ({ audioBlob, selectedMood }: MusicGeneratorProps) => {
   };
 
   const handlePlayPause = () => {
-    if (!audioRef.current) return;
+    if (!audioRef.current || !generatedMusicUrl) return;
     
     if (isPlaying) {
       audioRef.current.pause();
     } else {
-      audioRef.current.play();
+      // Ensure we create a fresh audio element with the current URL if needed
+      if (!audioRef.current.src || audioRef.current.src !== generatedMusicUrl) {
+        audioRef.current.src = generatedMusicUrl;
+        audioRef.current.load();
+      }
+      audioRef.current.play().catch(err => {
+        console.error('Error playing audio:', err);
+        toast.error("Playback error", {
+          description: "Could not play the audio. Please try again."
+        });
+      });
     }
   };
 
@@ -442,6 +465,11 @@ const MusicGenerator = ({ audioBlob, selectedMood }: MusicGeneratorProps) => {
       audioRef.current.pause();
     }
     
+    // Revoke previous URL to avoid memory leaks
+    if (generatedMusicUrl) {
+      URL.revokeObjectURL(generatedMusicUrl);
+    }
+    
     // Create new audio element for the selected song
     const audio = new Audio(song.url);
     audio.addEventListener('ended', () => setIsPlaying(false));
@@ -450,7 +478,13 @@ const MusicGenerator = ({ audioBlob, selectedMood }: MusicGeneratorProps) => {
     audioRef.current = audio;
     
     // Play the song
-    audio.play();
+    audio.play().catch(err => {
+      console.error('Error playing audio from playlist:', err);
+      toast.error("Playback error", {
+        description: "Could not play the selected song. Please try again."
+      });
+    });
+    
     setIsPlaying(true);
     setGeneratedMusicUrl(song.url);
     setGeneratedBlob(song.blob);
@@ -472,7 +506,14 @@ const MusicGenerator = ({ audioBlob, selectedMood }: MusicGeneratorProps) => {
         {originalAudioUrl && (
           <div className="p-4 bg-secondary/10 rounded-md">
             <p className="mb-2 font-medium">Your Original Recording</p>
-            <audio controls className="w-full" src={originalAudioUrl}></audio>
+            <audio 
+              controls 
+              className="w-full" 
+              src={originalAudioUrl}
+              onError={(e) => {
+                console.error("Error with original audio playback:", e);
+              }}
+            ></audio>
           </div>
         )}
         
@@ -521,6 +562,12 @@ const MusicGenerator = ({ audioBlob, selectedMood }: MusicGeneratorProps) => {
                 onPlay={() => setIsPlaying(true)}
                 onPause={() => setIsPlaying(false)}
                 onEnded={() => setIsPlaying(false)}
+                onError={(e) => {
+                  console.error("Error with generated audio playback:", e);
+                  toast.error("Audio playback issue", {
+                    description: "There was a problem playing the generated audio."
+                  });
+                }}
               ></audio>
               <p className="text-xs text-muted-foreground mt-2">
                 This is a simulated audio transformation based on your recording mood.

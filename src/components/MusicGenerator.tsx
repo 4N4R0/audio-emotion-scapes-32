@@ -2,9 +2,53 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
-import { Loader2, Music, Share, Download, Play, Pause } from 'lucide-react';
+import { Loader2, Music, Share, Download, Play, Pause, List } from 'lucide-react';
 import { type Mood } from './MoodSelector';
 import { toast } from 'sonner';
+
+// Custom error types
+class MoodNotFoundException extends Error {
+  constructor() {
+    super("No mood selection found. Please select a mood.");
+    this.name = "MoodNotFoundException";
+  }
+}
+
+class SongGeneratorException extends Error {
+  constructor() {
+    super("Error in generating the song. Please try again.");
+    this.name = "SongGeneratorException";
+  }
+}
+
+class SaveSongException extends Error {
+  constructor() {
+    super("Failed to save the song. Please check your storage settings.");
+    this.name = "SaveSongException";
+  }
+}
+
+// Types
+type VoiceInput = {
+  blob: Blob;
+  duration: number;
+  type: string;
+};
+
+type MoodInput = {
+  mood: Mood;
+  intensity: number;
+};
+
+type GeneratedSong = {
+  id: string;
+  title: string;
+  duration: number;
+  moodType: Mood;
+  blob: Blob;
+  url: string;
+  createdAt: Date;
+};
 
 type MusicGeneratorProps = {
   audioBlob?: Blob | null;
@@ -181,6 +225,8 @@ const MusicGenerator = ({ audioBlob, selectedMood }: MusicGeneratorProps) => {
   const [isPlaying, setIsPlaying] = useState(false);
   const [generatedBlob, setGeneratedBlob] = useState<Blob | null>(null);
   const [processingStage, setProcessingStage] = useState<string>("waiting");
+  const [generatedSongs, setGeneratedSongs] = useState<GeneratedSong[]>([]);
+  const [showPlaylist, setShowPlaylist] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   // Create audio URL from blob when component mounts or blob changes
@@ -216,6 +262,56 @@ const MusicGenerator = ({ audioBlob, selectedMood }: MusicGeneratorProps) => {
     };
   }, [generatedMusicUrl]);
 
+  // Implementing the getMoodSelection function as specified
+  const getMoodSelection = (): MoodInput => {
+    if (!selectedMood) {
+      throw new MoodNotFoundException();
+    }
+    
+    // In a real app, we might get intensity from user input or analyze the audio
+    return {
+      mood: selectedMood,
+      intensity: 0.8 // Default intensity
+    };
+  };
+
+  // Implementing the processOutput function as specified
+  const processOutput = async (voice: VoiceInput, mood: MoodInput): Promise<GeneratedSong> => {
+    try {
+      const generatedMusic = await generateMusicFromAudio(voice.blob, mood.mood);
+      const musicUrl = URL.createObjectURL(generatedMusic);
+      
+      const song: GeneratedSong = {
+        id: `song-${Date.now().toString(36)}`,
+        title: `${mood.mood} Creation ${new Date().toLocaleTimeString()}`,
+        duration: voice.duration,
+        moodType: mood.mood,
+        blob: generatedMusic,
+        url: musicUrl,
+        createdAt: new Date()
+      };
+      
+      return song;
+    } catch (error) {
+      console.error("Error in processOutput:", error);
+      throw new SongGeneratorException();
+    }
+  };
+
+  // Implementing the saveSongOption function as specified
+  const saveSongOption = async (song: GeneratedSong): Promise<boolean> => {
+    try {
+      // In a real app, this would save to a database or local storage
+      // For now, we'll just add it to our generated songs array
+      setGeneratedSongs(prev => [song, ...prev].slice(0, 10)); // Keep only the 10 most recent songs
+      
+      return true;
+    } catch (error) {
+      console.error("Error in saveSongOption:", error);
+      throw new SaveSongException();
+    }
+  };
+
   const handleGenerateMusic = async () => {
     if (!audioBlob || !selectedMood) {
       toast.error("Missing requirements", {
@@ -241,22 +337,40 @@ const MusicGenerator = ({ audioBlob, selectedMood }: MusicGeneratorProps) => {
       // Third stage - generating music
       setProcessingStage("generating");
       
-      // In a real application, this would call a service using Magenta.js and pyAudioAnalysis
-      const generatedMusic = await generateMusicFromAudio(audioBlob, selectedMood);
-      setGeneratedBlob(generatedMusic);
+      // Get the mood selection
+      const moodInput = getMoodSelection();
       
-      // Create a URL for the generated music
-      const musicUrl = URL.createObjectURL(generatedMusic);
-      setGeneratedMusicUrl(musicUrl);
+      // Create voice input object
+      const voiceInput: VoiceInput = {
+        blob: audioBlob,
+        duration: 30, // Assumed duration
+        type: audioBlob.type
+      };
+      
+      // Process the output to get a song
+      const song = await processOutput(voiceInput, moodInput);
+      
+      // Save the song and update state
+      await saveSongOption(song);
+      setGeneratedBlob(song.blob);
+      setGeneratedMusicUrl(song.url);
       
       toast.success("Music generated", {
         description: "Your custom track is ready to play and share!"
       });
     } catch (error) {
-      console.error("Error generating music:", error);
-      toast.error("Generation failed", {
-        description: "There was an error generating your music. Please try again."
-      });
+      if (error instanceof MoodNotFoundException || 
+          error instanceof SongGeneratorException ||
+          error instanceof SaveSongException) {
+        toast.error(error.name, {
+          description: error.message
+        });
+      } else {
+        console.error("Error generating music:", error);
+        toast.error("Generation failed", {
+          description: "There was an error generating your music. Please try again."
+        });
+      }
     } finally {
       setIsGenerating(false);
       setProcessingStage("complete");
@@ -290,6 +404,7 @@ const MusicGenerator = ({ audioBlob, selectedMood }: MusicGeneratorProps) => {
         toast.success("Shared successfully");
       } else {
         // Fallback for browsers that don't support the Web Share API
+        await navigator.clipboard.writeText("Your music has been generated! (This is a demo link)");
         toast.info("Sharing link copied", {
           description: "The link to your music has been copied to clipboard."
         });
@@ -314,6 +429,34 @@ const MusicGenerator = ({ audioBlob, selectedMood }: MusicGeneratorProps) => {
     
     toast.success("Music downloaded", {
       description: "Your generated music has been saved to your device."
+    });
+  };
+
+  const togglePlaylist = () => {
+    setShowPlaylist(!showPlaylist);
+  };
+
+  const playSongFromPlaylist = (song: GeneratedSong) => {
+    // Stop current song if playing
+    if (audioRef.current) {
+      audioRef.current.pause();
+    }
+    
+    // Create new audio element for the selected song
+    const audio = new Audio(song.url);
+    audio.addEventListener('ended', () => setIsPlaying(false));
+    audio.addEventListener('pause', () => setIsPlaying(false));
+    audio.addEventListener('play', () => setIsPlaying(true));
+    audioRef.current = audio;
+    
+    // Play the song
+    audio.play();
+    setIsPlaying(true);
+    setGeneratedMusicUrl(song.url);
+    setGeneratedBlob(song.blob);
+    
+    toast.info("Now playing", {
+      description: `Playing ${song.title}`
     });
   };
 
@@ -384,6 +527,7 @@ const MusicGenerator = ({ audioBlob, selectedMood }: MusicGeneratorProps) => {
                 In a production app, we would use Magenta.js for more sophisticated music generation.
               </p>
             </div>
+            
             <div className="flex justify-center gap-2 flex-wrap">
               <Button 
                 variant="outline" 
@@ -413,7 +557,53 @@ const MusicGenerator = ({ audioBlob, selectedMood }: MusicGeneratorProps) => {
                 <Download className="h-4 w-4" />
                 Download
               </Button>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                className="gap-2"
+                onClick={togglePlaylist}
+              >
+                <List className="h-4 w-4" />
+                {showPlaylist ? "Hide Playlist" : "Show Playlist"}
+              </Button>
             </div>
+            
+            {/* Generated Songs Playlist */}
+            {showPlaylist && (
+              <div className="mt-4 border rounded-md">
+                <div className="p-3 bg-secondary/10 border-b font-medium">Generated Song Playlist</div>
+                <div className="max-h-60 overflow-y-auto">
+                  {generatedSongs.length > 0 ? (
+                    <ul className="divide-y">
+                      {generatedSongs.map((song) => (
+                        <li key={song.id} className="p-3 hover:bg-secondary/20 transition-colors">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <p className="font-medium">{song.title}</p>
+                              <p className="text-xs text-muted-foreground">
+                                {song.moodType} • {new Date(song.createdAt).toLocaleString()}
+                              </p>
+                            </div>
+                            <Button 
+                              size="sm" 
+                              variant="ghost" 
+                              onClick={() => playSongFromPlaylist(song)}
+                              className="h-8 w-8 p-0"
+                            >
+                              <Play className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <div className="p-4 text-center text-muted-foreground">
+                      No songs generated yet. Create more songs to build your playlist.
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </CardContent>

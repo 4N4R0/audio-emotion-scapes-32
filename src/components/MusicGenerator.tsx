@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
@@ -75,49 +76,73 @@ const generateMusicFromAudio = async (audioBlob: Blob, mood: Mood): Promise<Blob
     
     switch (mood) {
       case 'happy':
+        // Increase tempo and pitch for happy mood
         for (let i = 0; i < outputData.length; i++) {
-          const newIndex = Math.floor(i * 1.05) % inputData.length;
+          const newIndex = Math.floor(i * 1.15) % inputData.length;
           outputData[i] = inputData[newIndex] * 0.8 + (Math.random() * 0.1 - 0.05);
         }
         break;
         
       case 'calm':
+        // Slow down tempo, add reverb-like effect, and soften sound for calm mood
         for (let i = 0; i < outputData.length; i++) {
-          const newIndex = Math.floor(i * 0.85) % inputData.length;
+          // Slow down by stretching (using a slower index)
+          const newIndex = Math.floor(i * 0.75) % inputData.length;
+          
+          // Add a reverb-like effect by mixing with delayed samples
+          let sum = inputData[newIndex] * 0.6; // Main sound but softer
+          
+          // Add multiple echos with decreasing volume
+          if (i > sampleRate * 0.2) sum += inputData[Math.max(0, i - Math.floor(sampleRate * 0.2))] * 0.2;
+          if (i > sampleRate * 0.4) sum += inputData[Math.max(0, i - Math.floor(sampleRate * 0.4))] * 0.12;
+          if (i > sampleRate * 0.6) sum += inputData[Math.max(0, i - Math.floor(sampleRate * 0.6))] * 0.08;
+          
+          // Smooth transitions between samples (low-pass filter effect)
           const prev1 = i > 0 ? outputData[i-1] : 0;
           const prev2 = i > 1 ? outputData[i-2] : 0;
-          outputData[i] = (inputData[newIndex] * 0.5 + prev1 * 0.3 + prev2 * 0.2) * 0.7;
-          if (i > sampleRate * 0.5) {
-            const echo = inputData[Math.max(0, i - Math.floor(sampleRate * 0.5))] * 0.15;
-            outputData[i] += echo;
-          }
+          outputData[i] = sum * 0.6 + prev1 * 0.25 + prev2 * 0.15;
         }
         break;
         
       case 'energetic':
+        // Increase tempo, add beats, enhance high frequencies for energetic mood
         for (let i = 0; i < outputData.length; i++) {
-          const beatEffect = i % (sampleRate / 4) < 1000 ? 1.2 : 1;
-          outputData[i] = Math.tanh(inputData[i] * 1.5) * beatEffect;
+          // Add a rhythmic beat effect
+          const beatEffect = (i % Math.floor(sampleRate / 3)) < Math.floor(sampleRate / 12) ? 1.4 : 1;
+          const newIndex = Math.floor(i * 1.2) % inputData.length;
+          
+          // Apply light distortion for more energy
+          const distorted = Math.tanh(inputData[newIndex] * 1.25);
+          outputData[i] = distorted * beatEffect;
         }
         break;
         
       case 'sad':
+        // Slow tempo, add echo, lower pitch for sad mood
         for (let i = 0; i < outputData.length; i++) {
-          const newIndex = Math.floor(i * 0.9) % inputData.length;
-          const echo = i > sampleRate * 0.3 ? inputData[i - Math.floor(sampleRate * 0.3)] * 0.3 : 0;
+          const newIndex = Math.floor(i * 0.85) % inputData.length;
+          const echo = i > sampleRate * 0.45 ? inputData[i - Math.floor(sampleRate * 0.45)] * 0.35 : 0;
           outputData[i] = inputData[newIndex] * 0.7 + echo;
         }
         break;
         
       case 'angry':
+        // Distort sound, add bass emphasis, irregular beats for angry mood
         for (let i = 0; i < outputData.length; i++) {
-          const distorted = Math.sign(inputData[i]) * Math.sqrt(Math.abs(inputData[i]));
-          const bassBoost = i % 2 === 0 ? 1.3 : 1;
-          outputData[i] = distorted * bassBoost;
+          // Heavy distortion with clipping
+          const distorted = Math.sign(inputData[i]) * Math.pow(Math.abs(inputData[i]), 0.7);
+          
+          // Add irregular beats
+          const irregularBeat = ((i + Math.floor(i / 1.7)) % Math.floor(sampleRate / 2)) < Math.floor(sampleRate / 8) ? 1.6 : 1;
+          
+          // Enhance bass frequencies
+          const bassBoost = i % 3 === 0 ? 1.4 : 1;
+          outputData[i] = distorted * bassBoost * irregularBeat;
         }
         break;
         
       default:
+        // Just copy the input if no mood specified
         for (let i = 0; i < outputData.length; i++) {
           outputData[i] = inputData[i];
         }
@@ -139,7 +164,8 @@ const generateMusicFromAudio = async (audioBlob: Blob, mood: Mood): Promise<Blob
   
   const wavEncoder = await encodeWAV(renderedBuffer);
   
-  await new Promise(resolve => setTimeout(resolve, 3000));
+  // Reduced simulation delay to improve user experience
+  await new Promise(resolve => setTimeout(resolve, 2000));
   
   return new Blob([wavEncoder], { type: 'audio/wav' });
 };
@@ -203,7 +229,9 @@ const MusicGenerator = ({ audioBlob, selectedMood }: MusicGeneratorProps) => {
   const [generatedSongs, setGeneratedSongs] = useState<GeneratedSong[]>([]);
   const [showPlaylist, setShowPlaylist] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const audioElementRef = useRef<HTMLAudioElement | null>(null);
 
+  // Set up original audio URL
   useEffect(() => {
     if (audioBlob) {
       const url = URL.createObjectURL(audioBlob);
@@ -215,7 +243,9 @@ const MusicGenerator = ({ audioBlob, selectedMood }: MusicGeneratorProps) => {
     }
   }, [audioBlob]);
   
+  // Handle audio element playback
   useEffect(() => {
+    // Clean up previous audio element
     if (audioRef.current) {
       audioRef.current.pause();
       audioRef.current.removeEventListener('ended', () => setIsPlaying(false));
@@ -223,23 +253,54 @@ const MusicGenerator = ({ audioBlob, selectedMood }: MusicGeneratorProps) => {
       audioRef.current.removeEventListener('play', () => setIsPlaying(true));
     }
     
+    // Set up new audio element if we have a URL
     if (generatedMusicUrl) {
       const audio = new Audio(generatedMusicUrl);
-      audio.addEventListener('ended', () => setIsPlaying(false));
-      audio.addEventListener('pause', () => setIsPlaying(false));
-      audio.addEventListener('play', () => setIsPlaying(true));
+      
+      // Add event listeners
+      const handleEnded = () => setIsPlaying(false);
+      const handlePause = () => setIsPlaying(false);
+      const handlePlay = () => setIsPlaying(true);
+      
+      audio.addEventListener('ended', handleEnded);
+      audio.addEventListener('pause', handlePause);
+      audio.addEventListener('play', handlePlay);
+      
+      // Store audio element
       audioRef.current = audio;
+      
+      return () => {
+        // Clean up on unmount or when URL changes
+        if (audioRef.current) {
+          audioRef.current.pause();
+          audioRef.current.removeEventListener('ended', handleEnded);
+          audioRef.current.removeEventListener('pause', handlePause);
+          audioRef.current.removeEventListener('play', handlePlay);
+        }
+      };
     }
-    
-    return () => {
-      if (audioRef.current) {
-        audioRef.current.pause();
-        audioRef.current.removeEventListener('ended', () => setIsPlaying(false));
-        audioRef.current.removeEventListener('pause', () => setIsPlaying(false));
-        audioRef.current.removeEventListener('play', () => setIsPlaying(true));
-      }
-    };
   }, [generatedMusicUrl]);
+  
+  // Connect the audio element ref to the DOM
+  useEffect(() => {
+    if (audioElementRef.current) {
+      const element = audioElementRef.current;
+      // Event listeners for the visible audio element
+      const handleVisiblePlay = () => setIsPlaying(true);
+      const handleVisiblePause = () => setIsPlaying(false);
+      const handleVisibleEnded = () => setIsPlaying(false);
+      
+      element.addEventListener('play', handleVisiblePlay);
+      element.addEventListener('pause', handleVisiblePause);
+      element.addEventListener('ended', handleVisibleEnded);
+      
+      return () => {
+        element.removeEventListener('play', handleVisiblePlay);
+        element.removeEventListener('pause', handleVisiblePause);
+        element.removeEventListener('ended', handleVisibleEnded);
+      };
+    }
+  }, []);
 
   const getMoodSelection = (): MoodInput => {
     if (!selectedMood) {
@@ -277,7 +338,6 @@ const MusicGenerator = ({ audioBlob, selectedMood }: MusicGeneratorProps) => {
   const saveSongOption = async (song: GeneratedSong): Promise<boolean> => {
     try {
       setGeneratedSongs(prev => [song, ...prev].slice(0, 10));
-      
       return true;
     } catch (error) {
       console.error("Error in saveSongOption:", error);
@@ -293,6 +353,12 @@ const MusicGenerator = ({ audioBlob, selectedMood }: MusicGeneratorProps) => {
       return;
     }
 
+    // Clean up previous audio URL if it exists
+    if (generatedMusicUrl) {
+      URL.revokeObjectURL(generatedMusicUrl);
+      setGeneratedMusicUrl(null);
+    }
+
     setIsGenerating(true);
     setProcessingStage("analyzing");
     toast.info("Generating music", {
@@ -300,10 +366,10 @@ const MusicGenerator = ({ audioBlob, selectedMood }: MusicGeneratorProps) => {
     });
 
     try {
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      await new Promise(resolve => setTimeout(resolve, 1000));
       
       setProcessingStage("extracting");
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      await new Promise(resolve => setTimeout(resolve, 1000));
       
       setProcessingStage("generating");
       
@@ -320,12 +386,7 @@ const MusicGenerator = ({ audioBlob, selectedMood }: MusicGeneratorProps) => {
       await saveSongOption(song);
       setGeneratedBlob(song.blob);
       
-      if (generatedMusicUrl) {
-        URL.revokeObjectURL(generatedMusicUrl);
-      }
-      
-      const url = URL.createObjectURL(song.blob);
-      setGeneratedMusicUrl(url);
+      setGeneratedMusicUrl(song.url);
       
       toast.success("Music generated", {
         description: "Your custom track is ready to play and share!"
@@ -354,22 +415,29 @@ const MusicGenerator = ({ audioBlob, selectedMood }: MusicGeneratorProps) => {
     
     if (isPlaying) {
       audioRef.current.pause();
+      setIsPlaying(false);
     } else {
       try {
+        // Ensure src is set and reset if needed
         if (!audioRef.current.src || audioRef.current.src !== generatedMusicUrl) {
           audioRef.current.src = generatedMusicUrl;
           audioRef.current.load();
         }
         
+        // Play audio and handle errors
         const playPromise = audioRef.current.play();
         
         if (playPromise !== undefined) {
-          playPromise.catch(err => {
-            console.error('Error playing audio:', err);
-            toast.error("Playback error", {
-              description: "Could not play the audio. Please try again."
+          playPromise
+            .then(() => {
+              setIsPlaying(true);
+            })
+            .catch(err => {
+              console.error('Error playing audio:', err);
+              toast.error("Playback error", {
+                description: "Could not play the audio. Please try again."
+              });
             });
-          });
         }
       } catch (err) {
         console.error('Error setting up audio playback:', err);
@@ -391,26 +459,40 @@ const MusicGenerator = ({ audioBlob, selectedMood }: MusicGeneratorProps) => {
     setIsSharing(true);
     
     try {
-      if (navigator.share) {
+      // Try Web Share API first
+      if (navigator.share && navigator.canShare) {
         try {
           const file = new File([generatedBlob], `${selectedMood}-music-creation.wav`, { 
             type: 'audio/wav' 
           });
           
-          await navigator.share({
+          const shareData = {
             title: `My ${selectedMood} Music Creation`,
-            text: `Check out the music I created with Audio Emotion Scapes!`,
-            files: [file]
-          });
+            text: `Check out the music I created with Audio Emotion Scapes!`
+          };
+          
+          // Check if file sharing is supported
+          if (navigator.canShare({ files: [file] })) {
+            await navigator.share({
+              ...shareData,
+              files: [file]
+            });
+          } else {
+            // Fall back to sharing without file
+            await navigator.share(shareData);
+          }
+          
           toast.success("Shared successfully");
         } catch (err) {
           console.error("Web Share API error:", err);
+          // Fall back to clipboard
           await navigator.clipboard.writeText("Your music has been generated! (This is a demo link)");
           toast.info("Sharing link copied", {
             description: "The link to your music has been copied to clipboard."
           });
         }
       } else {
+        // Fall back to clipboard if Web Share API is not supported
         await navigator.clipboard.writeText("Your music has been generated! (This is a demo link)");
         toast.info("Sharing link copied", {
           description: "The link to your music has been copied to clipboard."
@@ -427,16 +509,30 @@ const MusicGenerator = ({ audioBlob, selectedMood }: MusicGeneratorProps) => {
   };
 
   const handleDownload = () => {
-    if (!generatedMusicUrl || !selectedMood) return;
+    if (!generatedMusicUrl || !selectedMood) {
+      toast.error("Nothing to download", {
+        description: "Please generate music first."
+      });
+      return;
+    }
     
-    const a = document.createElement('a');
-    a.href = generatedMusicUrl;
-    a.download = `${selectedMood}-music-creation-${new Date().toISOString()}.wav`;
-    a.click();
-    
-    toast.success("Music downloaded", {
-      description: "Your generated music has been saved to your device."
-    });
+    try {
+      const a = document.createElement('a');
+      a.href = generatedMusicUrl;
+      a.download = `${selectedMood}-music-creation-${new Date().toISOString()}.wav`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      
+      toast.success("Music downloaded", {
+        description: "Your generated music has been saved to your device."
+      });
+    } catch (err) {
+      console.error("Download error:", err);
+      toast.error("Download failed", {
+        description: "There was an error downloading your music. Please try again."
+      });
+    }
   };
 
   const togglePlaylist = () => {
@@ -444,38 +540,57 @@ const MusicGenerator = ({ audioBlob, selectedMood }: MusicGeneratorProps) => {
   };
 
   const playSongFromPlaylist = (song: GeneratedSong) => {
+    // Clean up previous audio
     if (audioRef.current) {
       audioRef.current.pause();
     }
     
+    // Clean up previous URLs
     if (generatedMusicUrl) {
       URL.revokeObjectURL(generatedMusicUrl);
     }
     
+    // Create new audio element
     const audio = new Audio(song.url);
-    audio.addEventListener('ended', () => setIsPlaying(false));
-    audio.addEventListener('pause', () => setIsPlaying(false));
-    audio.addEventListener('play', () => setIsPlaying(true));
+    
+    // Set up event listeners
+    const handleEnded = () => setIsPlaying(false);
+    const handlePause = () => setIsPlaying(false);
+    const handlePlay = () => setIsPlaying(true);
+    
+    audio.addEventListener('ended', handleEnded);
+    audio.addEventListener('pause', handlePause);
+    audio.addEventListener('play', handlePlay);
+    
     audioRef.current = audio;
     
     try {
       const playPromise = audio.play();
+      
       if (playPromise !== undefined) {
-        playPromise.catch(err => {
-          console.error('Error playing audio from playlist:', err);
-          toast.error("Playback error", {
-            description: "Could not play the selected song. Please try again."
+        playPromise
+          .then(() => {
+            setIsPlaying(true);
+            setGeneratedMusicUrl(song.url);
+            setGeneratedBlob(song.blob);
+            
+            // Update UI audio element if it exists
+            if (audioElementRef.current && audioElementRef.current.src !== song.url) {
+              audioElementRef.current.src = song.url;
+              audioElementRef.current.load();
+            }
+            
+            toast.info("Now playing", {
+              description: `Playing ${song.title}`
+            });
+          })
+          .catch(err => {
+            console.error('Error playing audio from playlist:', err);
+            toast.error("Playback error", {
+              description: "Could not play the selected song. Please try again."
+            });
           });
-        });
       }
-      
-      setIsPlaying(true);
-      setGeneratedMusicUrl(song.url);
-      setGeneratedBlob(song.blob);
-      
-      toast.info("Now playing", {
-        description: `Playing ${song.title}`
-      });
     } catch (err) {
       console.error('Error setting up playlist audio:', err);
       toast.error("Audio setup error", {
@@ -546,6 +661,7 @@ const MusicGenerator = ({ audioBlob, selectedMood }: MusicGeneratorProps) => {
             <div className="p-4 bg-secondary/20 rounded-md">
               <p className="mb-2 font-medium">Your {selectedMood} Music Creation</p>
               <audio 
+                ref={audioElementRef}
                 controls 
                 className="w-full" 
                 src={generatedMusicUrl}
@@ -555,7 +671,7 @@ const MusicGenerator = ({ audioBlob, selectedMood }: MusicGeneratorProps) => {
                 onError={(e) => {
                   console.error("Error with generated audio playback:", e);
                   toast.error("Audio playback issue", {
-                    description: "There was a problem playing the generated audio."
+                    description: "There was a problem playing the generated audio. Please try regenerating or download the file instead."
                   });
                 }}
               ></audio>
